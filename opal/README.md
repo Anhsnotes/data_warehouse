@@ -1,62 +1,91 @@
-# OPAL + OPA Access Control for Data Warehouse
+# OPA Access Control for Data Warehouse
 
-Production-ready access control using **OPAL** (Open Policy Administration Layer) and **OPA** (Open Policy Agent) for fine-grained authorization with real-time policy and data synchronization.
+Production-ready access control using **OPA** (Open Policy Agent) with optional **OPAL** (Open Policy Administration Layer) for Git-based policy management.
 
-## Architecture
+## Two Deployment Modes
+
+### Mode 1: Standalone OPA (Default)
+Simple deployment with policies loaded from local files. **No external dependencies.**
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        OPAL + OPA Production Stack                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────┐   │
-│  │   Broadcast     │◄───►│   OPAL Server   │◄───►│    OPAL Client      │   │
-│  │   Channel       │     │                 │     │                     │   │
-│  │  (PostgreSQL)   │     │  • Policy sync  │     │  • Receives updates │   │
-│  │                 │     │  • Data config  │     │  • Manages OPA      │   │
-│  │  Port: 5432     │     │  Port: 7002     │     │  Port: 7000         │   │
-│  └─────────────────┘     └─────────────────┘     └──────────┬──────────┘   │
-│                                                              │              │
-│                                                    ┌─────────▼─────────┐   │
-│                                                    │   Embedded OPA    │   │
-│                                                    │                   │   │
-│                                                    │  • Policy engine  │   │
-│                                                    │  • Rego policies  │   │
-│                                                    │  • Auth queries   │   │
-│                                                    │  Port: 8181       │   │
-│                                                    └───────────────────┘   │
-│                                                              ▲              │
-└──────────────────────────────────────────────────────────────┼──────────────┘
-                                                               │
-                    ┌──────────────────────────────────────────┴───┐
-                    │              Your Applications               │
-                    │  (Streamlit, APIs, Services)                 │
-                    │  POST /v1/data/datawarehouse/authz/allow     │
-                    └──────────────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│         Standalone OPA              │
+│                                     │
+│  ┌─────────────┐  ┌─────────────┐  │
+│  │    Rego     │  │    JSON     │  │
+│  │  Policies   │  │    Data     │  │
+│  │ (policies/) │  │   (data/)   │  │
+│  └──────┬──────┘  └──────┬──────┘  │
+│         └────────┬───────┘         │
+│            ┌─────▼─────┐           │
+│            │    OPA    │           │
+│            │   :8181   │           │
+│            └───────────┘           │
+└─────────────────────────────────────┘
 ```
 
-## Components
+### Mode 2: OPAL + OPA (Git-based)
+Full stack with real-time policy sync from Git. **Use when you need:**
+- Automatic policy updates when Git changes
+- Multi-instance deployments
+- Audit trail of policy changes
 
-| Component | Port | Purpose |
-|-----------|------|---------|
-| **Broadcast Channel** | 5432 (internal) | PostgreSQL for pub/sub between OPAL server and clients |
-| **OPAL Server** | 7002 | Policy administration, tracks Git repos, pushes updates |
-| **OPAL Client** | 7000 | Receives updates, manages embedded OPA lifecycle |
-| **OPA (embedded)** | 8181 | Policy evaluation engine for authorization queries |
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      OPAL + OPA Stack                           │
+│                                                                 │
+│  ┌──────────┐    ┌─────────────┐    ┌──────────────────────┐   │
+│  │ Broadcast│◄──►│ OPAL Server │◄──►│    OPAL Client       │   │
+│  │ Channel  │    │   :7002     │    │      :7001           │   │
+│  │ (Postgres)    │             │    │  ┌────────────────┐  │   │
+│  └──────────┘    │  Git Sync   │    │  │  Embedded OPA  │  │   │
+│                  └──────┬──────┘    │  │     :8183      │  │   │
+│                         │           │  └────────────────┘  │   │
+│                  ┌──────▼──────┐    └──────────────────────┘   │
+│                  │  Git Repo   │                               │
+│                  │ (policies)  │                               │
+│                  └─────────────┘                               │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Quick Start
 
-### 1. Start Production Stack
+### Option A: Standalone OPA (Recommended to start)
 
 ```bash
 cd opal
 ./setup.sh start
+./setup.sh test
 ```
 
-This starts the full production stack:
-- Broadcast Channel (PostgreSQL)
-- OPAL Server (policy administration)
-- OPAL Client with embedded OPA (policy evaluation)
+**That's it!** OPA is running at http://localhost:8181
+
+### Option B: OPAL + OPA (Git-based policies)
+
+1. **Push this repo to GitHub** (or use existing remote)
+
+2. **Configure OPAL:**
+   ```bash
+   cp env.example .env
+   # Edit .env:
+   OPAL_POLICY_REPO_URL=https://github.com/YOUR_USERNAME/data_warehouse.git
+   OPAL_REPO_POLICY_PATHS=opal/policies
+   ```
+
+3. **Start OPAL stack:**
+   ```bash
+   ./setup.sh start-opal
+   ```
+
+## Components
+
+| Mode | Component | Port | Purpose |
+|------|-----------|------|---------|
+| Standalone | **OPA** | 8181 | Policy evaluation from local files |
+| OPAL | **Broadcast Channel** | internal | PostgreSQL pub/sub |
+| OPAL | **OPAL Server** | 7002 | Git sync, policy distribution |
+| OPAL | **OPAL Client** | 7001 | Receives updates, manages OPA |
+| OPAL | **OPA (embedded)** | 8183 | Policy evaluation |
 
 ### 2. Verify Services
 

@@ -34,8 +34,8 @@ services:
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_PORT=5432
-      # OPAL Access Control
-      - OPA_URL=${OPA_URL:-http://opal-client:8181}
+      # OPA Access Control (connects via host network)
+      - OPA_URL=${OPA_URL:-http://host.docker.internal:8181}
       - OPAL_ENABLED=${OPAL_ENABLED:-false}
     volumes:
       - ./streamlit/app.py:/app/app.py:ro
@@ -49,9 +49,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    networks:
-      - default
-      - opal_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - postgres
 
@@ -105,9 +104,6 @@ services:
 networks:
   default:
     name: data_warehouse_default
-  opal_network:
-    name: data_warehouse_opal_opal_network
-    external: true
 
 volumes:
   postgres_data:

@@ -23,10 +23,8 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}🚀 Starting Data Warehouse Stack...${NC}"
 echo ""
 
-# Pre-flight: Create OPAL network (needed before Streamlit starts)
-echo -e "${YELLOW}Pre-flight: Creating OPAL network...${NC}"
-docker network create data_warehouse_opal_opal_network 2>/dev/null || true
-echo -e "${GREEN}✓ OPAL network ready${NC}"
+# Pre-flight: Clean up any stale networks
+docker network rm data_warehouse_default 2>/dev/null || true
 echo ""
 
 # Step 1: Start PostgreSQL
@@ -258,7 +256,7 @@ fi
 echo ""
 
 # Step 7: Start OPAL Access Control (if enabled)
-OPAL_ENABLED="${OPAL_ENABLED:-false}"
+OPAL_ENABLED="${OPAL_ENABLED:-true}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ "$OPAL_ENABLED" = "true" ] || [ "$OPAL_ENABLED" = "1" ]; then
@@ -267,8 +265,14 @@ if [ "$OPAL_ENABLED" = "true" ] || [ "$OPAL_ENABLED" = "1" ]; then
     if [ -f "$SCRIPT_DIR/opal/setup.sh" ]; then
         cd "$SCRIPT_DIR/opal"
         
-        # Start OPAL services
-        ./setup.sh start
+        # Start OPAL services (full stack with Git sync if configured, otherwise standalone)
+        if [ -f .env ] && grep -q "OPAL_POLICY_REPO_URL=." .env 2>/dev/null; then
+            ./setup.sh start-opal
+        else
+            echo -e "${YELLOW}   No Git repo configured - starting standalone OPA${NC}"
+            echo -e "${YELLOW}   To enable OPAL: configure opal/.env with OPAL_POLICY_REPO_URL${NC}"
+            ./setup.sh start
+        fi
         
         cd "$SCRIPT_DIR"
         echo -e "${GREEN}✓ OPAL Access Control started${NC}"
@@ -310,19 +314,13 @@ echo "  │ 🔄 Airbyte           │ http://localhost:8000  │ $AIRBYTE_RUNNI
 
 # Check OPAL/OPA status
 if [ "$OPAL_ENABLED" = "true" ] || [ "$OPAL_ENABLED" = "1" ]; then
-    OPAL_STATUS="✅"
     OPA_STATUS="✅"
-    if ! curl -s "http://localhost:7002/healthcheck" > /dev/null 2>&1; then
-        OPAL_STATUS="⚠️ "
-    fi
     if ! curl -s "http://localhost:8181/health" > /dev/null 2>&1; then
         OPA_STATUS="⚠️ "
     fi
-    echo "  │ 🔐 OPAL Server       │ http://localhost:7002  │ $OPAL_STATUS     │"
-    echo "  │ 🔐 OPA (via OPAL)    │ http://localhost:8181  │ $OPA_STATUS     │"
+    echo "  │ 🔐 OPA Access Ctrl   │ http://localhost:8181  │ $OPA_STATUS     │"
 else
-    echo "  │ 🔐 OPAL Server       │ http://localhost:7002  │ ⏸️      │"
-    echo "  │ 🔐 OPA (via OPAL)    │ http://localhost:8181  │ ⏸️      │"
+    echo "  │ 🔐 OPA Access Ctrl   │ http://localhost:8181  │ ⏸️      │"
 fi
 echo "  └─────────────────────────────────────────────────────────┘"
 echo ""

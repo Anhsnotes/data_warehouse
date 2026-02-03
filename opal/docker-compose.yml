@@ -1,11 +1,49 @@
-# OPAL + OPA Production-Ready Access Control Stack
-# Real-time policy and data synchronization for fine-grained authorization
+# OPA Access Control Stack - Production Ready
+# 
+# Two deployment modes:
+# 1. STANDALONE (default): OPA with local policies - works immediately
+# 2. OPAL: Full OPAL stack for Git-based policy management (requires Git repo)
 
 services:
   # =============================================================================
-  # BROADCAST CHANNEL (PostgreSQL)
-  # Enables real-time pub/sub communication between OPAL Server and Clients
+  # STANDALONE OPA (Default - Production Ready)
+  # Policy engine with policies loaded from local files
+  # Use this for immediate production deployment
   # =============================================================================
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: data_warehouse_opa
+    restart: unless-stopped
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=${OPA_LOG_LEVEL:-info}"
+      - "--log-format=text"
+      - "--set=decision_logs.console=true"
+      - "/policies"
+      - "/data"
+    ports:
+      - "${OPA_PORT:-8181}:8181"
+    volumes:
+      - ./policies:/policies:ro
+      - ./data:/data:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - opal_network
+
+  # =============================================================================
+  # OPAL STACK (Optional - for Git-based policy management)
+  # Enable with: docker compose --profile opal up -d
+  # Requires: OPAL_POLICY_REPO_URL to be configured
+  # =============================================================================
+  
+  # Broadcast channel for OPAL pub/sub
   broadcast_channel:
     image: postgres:16-alpine
     container_name: data_warehouse_opal_broadcast
@@ -24,47 +62,30 @@ services:
       start_period: 5s
     networks:
       - opal_network
+    profiles:
+      - opal
 
-  # =============================================================================
-  # OPAL SERVER
-  # Central administration server for policy and data distribution
-  # - Tracks policies from local directory (can be switched to Git repo)
-  # - Pushes policy/data updates to all connected clients in real-time
-  # =============================================================================
+  # OPAL Server - policy distribution from Git
   opal_server:
     image: permitio/opal-server:latest
     container_name: data_warehouse_opal_server
     restart: unless-stopped
     environment:
-      # Broadcast channel for pub/sub communication
       - OPAL_BROADCAST_URI=postgres://postgres:postgres@broadcast_channel:5432/opal_broadcast
-      
-      # Server workers
       - UVICORN_NUM_WORKERS=4
-      
-      # Policy repository configuration
-      # For production: use a Git repository URL
-      # - OPAL_POLICY_REPO_URL=https://github.com/your-org/opal-policies.git
-      # - OPAL_POLICY_REPO_MAIN_BRANCH=main
-      # - OPAL_POLICY_REPO_SSH_KEY=${OPAL_POLICY_REPO_SSH_KEY:-}
-      
-      # For local development: poll local directory
+      # Git repository settings - can use same repo with subdirectory
+      - OPAL_POLICY_REPO_URL=${OPAL_POLICY_REPO_URL}
+      - OPAL_POLICY_REPO_MAIN_BRANCH=${OPAL_POLICY_REPO_BRANCH:-main}
+      - OPAL_POLICY_REPO_SSH_KEY=${OPAL_POLICY_REPO_SSH_KEY:-}
+      - OPAL_POLICY_SOURCE_TYPE=git
+      # Subdirectory within repo containing policies (e.g., opal/policies)
+      - OPAL_REPO_POLICY_PATHS=${OPAL_REPO_POLICY_PATHS:-opal/policies}
       - OPAL_POLICY_REPO_POLLING_INTERVAL=30
-      
-      # Data sources configuration
-      - OPAL_DATA_CONFIG_SOURCES={"config":{"entries":[{"url":"http://opal_server:7002/policy-data","topics":["policy_data"],"dst_path":""}]}}
-      
-      # Logging
       - OPAL_LOG_LEVEL=${OPAL_LOG_LEVEL:-INFO}
       - OPAL_LOG_FORMAT=text
-      
-      # Statistics
       - OPAL_STATISTICS_ENABLED=true
     ports:
       - "${OPAL_SERVER_PORT:-7002}:7002"
-    volumes:
-      - ./policies:/app/policies:ro
-      - ./data:/app/data:ro
     depends_on:
       broadcast_channel:
         condition: service_healthy
@@ -76,37 +97,23 @@ services:
       start_period: 60s
     networks:
       - opal_network
-      - default
+    profiles:
+      - opal
 
-  # =============================================================================
-  # OPAL CLIENT + EMBEDDED OPA
-  # Runs OPA as inline process, automatically syncs policies and data
-  # - Receives real-time updates from OPAL Server
-  # - Manages OPA lifecycle (restart, rehydrate on failure)
-  # - Exposes OPA on port 8181 for authorization queries
-  # =============================================================================
+  # OPAL Client with embedded OPA
   opal_client:
     image: permitio/opal-client:latest
     container_name: data_warehouse_opal_client
     restart: unless-stopped
     environment:
-      # Connect to OPAL server
       - OPAL_SERVER_URL=http://opal_server:7002
-      
-      # Embedded OPA configuration
       - OPAL_INLINE_OPA_ENABLED=true
       - OPAL_INLINE_OPA_LOG_FORMAT=text
-      
-      # Data topics to subscribe to
       - OPAL_DATA_TOPICS=policy_data
-      
-      # Logging
       - OPAL_LOG_LEVEL=${OPAL_LOG_LEVEL:-INFO}
     ports:
-      # OPAL Client API
-      - "${OPAL_CLIENT_PORT:-7000}:7000"
-      # OPA API (authorization queries go here)
-      - "${OPA_PORT:-8181}:8181"
+      - "${OPAL_CLIENT_PORT:-7001}:7000"
+      - "${OPAL_OPA_PORT:-8183}:8181"
     depends_on:
       opal_server:
         condition: service_healthy
@@ -118,49 +125,12 @@ services:
       start_period: 60s
     networks:
       - opal_network
-      - default
-
-  # =============================================================================
-  # STANDALONE OPA (Optional - for debugging/testing)
-  # Run OPA directly with local policies without OPAL
-  # =============================================================================
-  opa_standalone:
-    image: openpolicyagent/opa:latest
-    container_name: data_warehouse_opa_standalone
-    restart: unless-stopped
-    command:
-      - "run"
-      - "--server"
-      - "--addr=0.0.0.0:8181"
-      - "--log-level=${OPA_LOG_LEVEL:-info}"
-      - "--log-format=text"
-      - "--set=decision_logs.console=true"
-      - "/policies"
-      - "/data"
-    ports:
-      - "${OPA_STANDALONE_PORT:-8182}:8181"
-    volumes:
-      - ./policies:/policies:ro
-      - ./data:/data:ro
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8181/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - opal_network
-      - default
     profiles:
-      - standalone
+      - opal
 
 networks:
   opal_network:
     name: data_warehouse_opal_opal_network
-    external: true
-  default:
-    name: data_warehouse_default
-    external: true
 
 volumes:
   opal_broadcast_data:

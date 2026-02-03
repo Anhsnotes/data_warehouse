@@ -1,6 +1,9 @@
 #!/bin/bash
-# OPAL + OPA Access Control Setup Script
-# Production-ready policy administration and authorization
+# OPA Access Control Setup Script
+# 
+# Two deployment modes:
+# - Standalone OPA (default): Works immediately with local policies
+# - Full OPAL stack: Requires Git repository for policies
 
 set -e
 
@@ -15,7 +18,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     OPAL + OPA Access Control for Data Warehouse          ║${NC}"
+echo -e "${BLUE}║       OPA Access Control for Data Warehouse               ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo
 
@@ -38,101 +41,113 @@ get_compose_cmd() {
 create_env() {
     if [ ! -f ".env" ]; then
         cat > .env << 'EOF'
-# OPAL + OPA Configuration
-# Generated automatically
+# OPA Access Control Configuration
 
-# Server ports
-OPAL_SERVER_PORT=7002
-OPAL_CLIENT_PORT=7000
+# OPA Settings
 OPA_PORT=8181
-OPA_STANDALONE_PORT=8182
-
-# Logging (DEBUG, INFO, WARNING, ERROR)
-OPAL_LOG_LEVEL=INFO
 OPA_LOG_LEVEL=info
 
-# For Git-based policies (production), uncomment and configure:
+# OPAL Settings (for Git-based policy management)
+# Uncomment and configure to enable OPAL:
 # OPAL_POLICY_REPO_URL=https://github.com/your-org/policies.git
-# OPAL_POLICY_REPO_MAIN_BRANCH=main
-# OPAL_POLICY_REPO_SSH_KEY=<base64-encoded-ssh-key>
+# OPAL_POLICY_REPO_BRANCH=main
+# OPAL_SERVER_PORT=7002
+# OPAL_CLIENT_PORT=7001
+# OPAL_OPA_PORT=8183
+# OPAL_LOG_LEVEL=INFO
 EOF
         echo -e "${GREEN}Created .env configuration file${NC}"
     fi
 }
 
-# Function to start OPAL services
-start_opal() {
-    echo -e "${YELLOW}Starting OPAL + OPA services...${NC}"
+# Networks are managed by docker-compose
+create_networks() {
+    # Networks created automatically by docker-compose
+    true
+}
+
+# Function to start standalone OPA
+start_standalone() {
+    echo -e "${YELLOW}Starting standalone OPA...${NC}"
+    echo
     
-    # Create required networks
-    echo -e "${YELLOW}   Creating required networks...${NC}"
-    docker network create data_warehouse_default 2>/dev/null || true
-    docker network create data_warehouse_opal_opal_network 2>/dev/null || true
+    create_networks
     
     COMPOSE_CMD=$(get_compose_cmd)
+    $COMPOSE_CMD up -d opa
     
-    # Start services in order
-    echo -e "${YELLOW}   Starting broadcast channel...${NC}"
-    $COMPOSE_CMD up -d broadcast_channel
-    
-    echo -e "${YELLOW}   Waiting for broadcast channel to be ready...${NC}"
-    sleep 3
-    
-    echo -e "${YELLOW}   Starting OPAL server...${NC}"
-    $COMPOSE_CMD up -d opal_server
-    
-    echo -e "${YELLOW}   Waiting for OPAL server to be ready...${NC}"
-    for i in {1..30}; do
-        if curl -s "http://localhost:${OPAL_SERVER_PORT:-7002}/healthcheck" > /dev/null 2>&1; then
-            break
-        fi
-        sleep 2
-    done
-    
-    echo -e "${YELLOW}   Starting OPAL client (with embedded OPA)...${NC}"
-    $COMPOSE_CMD up -d opal_client
-    
-    echo -e "${GREEN}OPAL + OPA services started!${NC}"
     echo
-    echo -e "${BLUE}Service URLs:${NC}"
-    echo -e "  • OPAL Server:     http://localhost:${OPAL_SERVER_PORT:-7002}"
-    echo -e "  • OPAL Client:     http://localhost:${OPAL_CLIENT_PORT:-7000}"
-    echo -e "  • OPA (queries):   http://localhost:${OPA_PORT:-8181}"
+    echo -e "${GREEN}OPA Access Control started!${NC}"
+    echo
+    echo -e "${BLUE}Service URL:${NC}"
+    echo -e "  • OPA Server: http://localhost:${OPA_PORT:-8181}"
     echo
     echo -e "${BLUE}Architecture:${NC}"
-    echo "  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐"
-    echo "  │  Broadcast  │◄───►│    OPAL     │◄───►│    OPAL     │"
-    echo "  │  Channel    │     │   Server    │     │   Client    │"
-    echo "  │ (PostgreSQL)│     │  (:7002)    │     │  (:7000)    │"
-    echo "  └─────────────┘     └─────────────┘     └──────┬──────┘"
-    echo "                                                  │"
-    echo "                                           ┌──────▼──────┐"
-    echo "                                           │  Embedded   │"
-    echo "                                           │    OPA      │"
-    echo "                                           │  (:8181)    │"
-    echo "                                           └─────────────┘"
+    echo "  ┌─────────────────────────────────────────┐"
+    echo "  │             Standalone OPA              │"
+    echo "  │                                         │"
+    echo "  │  ┌─────────────┐    ┌─────────────┐   │"
+    echo "  │  │   Rego      │    │    JSON     │   │"
+    echo "  │  │  Policies   │    │    Data     │   │"
+    echo "  │  └──────┬──────┘    └──────┬──────┘   │"
+    echo "  │         └──────────┬───────┘         │"
+    echo "  │              ┌─────▼─────┐            │"
+    echo "  │              │   OPA     │            │"
+    echo "  │              │  :8181    │            │"
+    echo "  │              └───────────┘            │"
+    echo "  └─────────────────────────────────────────┘"
+    echo
+    echo -e "${YELLOW}To upgrade to Git-based policies later:${NC}"
+    echo "  1. Configure OPAL_POLICY_REPO_URL in .env"
+    echo "  2. Run: ./setup.sh start-opal"
 }
 
-# Function to start standalone OPA only (for development/debugging)
-start_standalone() {
-    echo -e "${YELLOW}Starting standalone OPA (without OPAL)...${NC}"
+# Function to start full OPAL stack
+start_opal() {
+    echo -e "${YELLOW}Starting OPAL + OPA stack...${NC}"
     
-    docker network create data_warehouse_default 2>/dev/null || true
-    docker network create data_warehouse_opal_opal_network 2>/dev/null || true
+    # Check if Git repo is configured
+    if [ -z "${OPAL_POLICY_REPO_URL}" ]; then
+        echo -e "${RED}Error: OPAL_POLICY_REPO_URL is not configured${NC}"
+        echo
+        echo "To use OPAL with this repo's policies:"
+        echo "  1. Push this repo to GitHub/GitLab"
+        echo "  2. Configure opal/.env:"
+        echo "     cp opal/env.example opal/.env"
+        echo "     # Edit .env and set:"
+        echo "     OPAL_POLICY_REPO_URL=https://github.com/YOUR_USERNAME/data_warehouse.git"
+        echo "     OPAL_REPO_POLICY_PATHS=opal/policies"
+        echo "  3. Run: ./setup.sh start-opal"
+        echo
+        echo "Or use standalone OPA for local policies (no Git needed):"
+        echo "  ./setup.sh start"
+        exit 1
+    fi
+    
+    echo -e "${BLUE}Policy source: ${OPAL_POLICY_REPO_URL}${NC}"
+    echo -e "${BLUE}Policy path:   ${OPAL_REPO_POLICY_PATHS:-opal/policies}${NC}"
+    
+    create_networks
     
     COMPOSE_CMD=$(get_compose_cmd)
-    $COMPOSE_CMD --profile standalone up -d opa_standalone
+    $COMPOSE_CMD --profile opal up -d
     
-    echo -e "${GREEN}Standalone OPA started!${NC}"
-    echo -e "  • OPA Server: http://localhost:${OPA_STANDALONE_PORT:-8182}"
+    echo
+    echo -e "${GREEN}OPAL + OPA stack started!${NC}"
+    echo
+    echo -e "${BLUE}Service URLs:${NC}"
+    echo -e "  • OPAL Server:   http://localhost:${OPAL_SERVER_PORT:-7002}"
+    echo -e "  • OPAL Client:   http://localhost:${OPAL_CLIENT_PORT:-7001}"
+    echo -e "  • OPA (OPAL):    http://localhost:${OPAL_OPA_PORT:-8183}"
+    echo -e "  • OPA (standalone): http://localhost:${OPA_PORT:-8181}"
 }
 
-# Function to stop OPAL services
-stop_opal() {
-    echo -e "${YELLOW}Stopping OPAL + OPA services...${NC}"
+# Function to stop services
+stop_services() {
+    echo -e "${YELLOW}Stopping OPA services...${NC}"
     
     COMPOSE_CMD=$(get_compose_cmd)
-    $COMPOSE_CMD --profile standalone down
+    $COMPOSE_CMD --profile opal down
     
     echo -e "${GREEN}All services stopped${NC}"
 }
@@ -218,91 +233,72 @@ test_policy() {
 # Function to show logs
 show_logs() {
     COMPOSE_CMD=$(get_compose_cmd)
-    $COMPOSE_CMD logs -f
+    $COMPOSE_CMD --profile opal logs -f
 }
 
 # Function to show status
 show_status() {
-    echo -e "${BLUE}OPAL + OPA Services Status:${NC}"
+    echo -e "${BLUE}OPA Access Control Status:${NC}"
     echo
     
     COMPOSE_CMD=$(get_compose_cmd)
-    $COMPOSE_CMD ps
+    $COMPOSE_CMD --profile opal ps
     
     echo
     echo -e "${BLUE}Health Checks:${NC}"
     
-    # Check Broadcast Channel
-    if docker ps --format "{{.Names}}" | grep -q "data_warehouse_opal_broadcast"; then
-        echo -e "  Broadcast Channel: ${GREEN}✓ Running${NC}"
+    # Check standalone OPA
+    if curl -s "http://localhost:${OPA_PORT:-8181}/health" > /dev/null 2>&1; then
+        echo -e "  OPA (standalone): ${GREEN}✓ Healthy${NC}"
     else
-        echo -e "  Broadcast Channel: ${RED}✗ Not running${NC}"
+        echo -e "  OPA (standalone): ${RED}✗ Not responding${NC}"
     fi
     
     # Check OPAL Server
     if curl -s "http://localhost:${OPAL_SERVER_PORT:-7002}/healthcheck" > /dev/null 2>&1; then
-        echo -e "  OPAL Server:       ${GREEN}✓ Healthy${NC}"
-    else
-        echo -e "  OPAL Server:       ${RED}✗ Not responding${NC}"
+        echo -e "  OPAL Server:      ${GREEN}✓ Healthy${NC}"
     fi
     
     # Check OPAL Client
-    if curl -s "http://localhost:${OPAL_CLIENT_PORT:-7000}/healthcheck" > /dev/null 2>&1; then
-        echo -e "  OPAL Client:       ${GREEN}✓ Healthy${NC}"
-    else
-        echo -e "  OPAL Client:       ${RED}✗ Not responding${NC}"
+    if curl -s "http://localhost:${OPAL_CLIENT_PORT:-7001}/healthcheck" > /dev/null 2>&1; then
+        echo -e "  OPAL Client:      ${GREEN}✓ Healthy${NC}"
     fi
     
-    # Check OPA
-    if curl -s "http://localhost:${OPA_PORT:-8181}/health" > /dev/null 2>&1; then
-        echo -e "  OPA (embedded):    ${GREEN}✓ Healthy${NC}"
-    else
-        echo -e "  OPA (embedded):    ${RED}✗ Not responding${NC}"
-    fi
-    
-    # Check Standalone OPA (if running)
-    if curl -s "http://localhost:${OPA_STANDALONE_PORT:-8182}/health" > /dev/null 2>&1; then
-        echo -e "  OPA (standalone):  ${GREEN}✓ Healthy${NC}"
+    # Check OPAL OPA
+    if curl -s "http://localhost:${OPAL_OPA_PORT:-8183}/health" > /dev/null 2>&1; then
+        echo -e "  OPA (via OPAL):   ${GREEN}✓ Healthy${NC}"
     fi
 }
 
-# Function to trigger data update
-trigger_update() {
-    echo -e "${YELLOW}Triggering policy data update...${NC}"
+# Function to reload policies (for standalone OPA)
+reload_policies() {
+    echo -e "${YELLOW}Reloading policies...${NC}"
     
-    OPAL_SERVER_URL="http://localhost:${OPAL_SERVER_PORT:-7002}"
+    COMPOSE_CMD=$(get_compose_cmd)
+    $COMPOSE_CMD restart opa
     
-    curl -s -X POST "$OPAL_SERVER_URL/data/config" \
-        -H "Content-Type: application/json" \
-        -d '{
-            "entries": [{
-                "url": "http://opal_server:7002/policy-data",
-                "topics": ["policy_data"],
-                "dst_path": ""
-            }]
-        }'
-    
-    echo -e "${GREEN}Data update triggered!${NC}"
+    echo -e "${GREEN}Policies reloaded!${NC}"
 }
 
 # Main command handling
 case "${1:-}" in
     start)
         create_env
-        start_opal
-        ;;
-    start-standalone)
-        create_env
         start_standalone
         ;;
+    start-opal)
+        create_env
+        source .env 2>/dev/null || true
+        start_opal
+        ;;
     stop)
-        stop_opal
+        stop_services
         ;;
     restart)
-        stop_opal
+        stop_services
         sleep 2
         create_env
-        start_opal
+        start_standalone
         ;;
     test)
         test_policy
@@ -313,29 +309,34 @@ case "${1:-}" in
     status)
         show_status
         ;;
-    update)
-        trigger_update
+    reload)
+        reload_policies
         ;;
     *)
-        echo "Usage: $0 {start|start-standalone|stop|restart|test|logs|status|update}"
+        echo "Usage: $0 {start|start-opal|stop|restart|test|logs|status|reload}"
         echo
         echo "Commands:"
-        echo "  start            Start full OPAL + OPA stack (production mode)"
-        echo "  start-standalone Start only standalone OPA (development mode)"
-        echo "  stop             Stop all services"
-        echo "  restart          Restart all services"
-        echo "  test             Run policy evaluation tests"
-        echo "  logs             Show service logs"
-        echo "  status           Show service status"
-        echo "  update           Trigger policy data update"
+        echo "  start       Start standalone OPA (default, works with local policies)"
+        echo "  start-opal  Start full OPAL stack (requires Git repo configuration)"
+        echo "  stop        Stop all services"
+        echo "  restart     Restart services"
+        echo "  test        Run policy evaluation tests"
+        echo "  logs        Show service logs"
+        echo "  status      Show service status"
+        echo "  reload      Reload policies (restart OPA)"
         echo
-        echo "Production Architecture:"
-        echo "  Broadcast Channel (PostgreSQL) → OPAL Server → OPAL Client → OPA"
+        echo "Deployment Modes:"
         echo
-        echo "Service Ports:"
-        echo "  OPAL Server:  7002  (policy administration)"
-        echo "  OPAL Client:  7000  (client API)"
-        echo "  OPA:          8181  (authorization queries)"
+        echo "  STANDALONE (default):"
+        echo "    - OPA loads policies from local ./policies directory"
+        echo "    - Ready for production use immediately"
+        echo "    - Policies updated by editing files + ./setup.sh reload"
+        echo
+        echo "  OPAL (optional):"
+        echo "    - OPAL Server tracks Git repository for policies"
+        echo "    - Automatic policy updates on Git push"
+        echo "    - Requires OPAL_POLICY_REPO_URL in .env"
+        echo
         exit 1
         ;;
 esac
