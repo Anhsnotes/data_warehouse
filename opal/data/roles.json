@@ -1,0 +1,118 @@
+{
+  "roles": {
+    "admin": {
+      "description": "Full system administrator with unrestricted access",
+      "permissions": [
+        {"action": "*", "resource": "*"}
+      ]
+    },
+    "data_engineer": {
+      "description": "Data engineering team with full data pipeline access",
+      "permissions": [
+        {"action": "read", "resource": "*"},
+        {"action": "write", "resource": "staging.*"},
+        {"action": "write", "resource": "intermediate.*"},
+        {"action": "create", "resource": "staging.*"},
+        {"action": "create", "resource": "intermediate.*"},
+        {"action": "delete", "resource": "staging.*"},
+        {"action": "export", "resource": "*"},
+        {"action": "view", "resource": "dashboard.*"},
+        {"action": "view", "resource": "dashboard.ai_assistant"},
+        {"action": "api.read", "resource": "*"},
+        {"action": "api.write", "resource": "*"}
+      ]
+    },
+    "analyst": {
+      "description": "Data analyst with read access to analytics marts",
+      "permissions": [
+        {"action": "read", "resource": "mart_*"},
+        {"action": "read", "resource": "staging.*"},
+        {"action": "read", "resource": "dim_*"},
+        {"action": "read", "resource": "fact_*"},
+        {"action": "view", "resource": "dashboard.sales"},
+        {"action": "view", "resource": "dashboard.operations"},
+        {"action": "view", "resource": "dashboard.customer_analytics"},
+        {"action": "view", "resource": "dashboard.product_inventory"},
+        {"action": "view", "resource": "dashboard.ai_assistant"},
+        {"action": "export", "resource": "mart_*"},
+        {"action": "query", "resource": "*"}
+      ]
+    },
+    "viewer": {
+      "description": "Read-only access to pre-built dashboards and marts",
+      "permissions": [
+        {"action": "read", "resource": "mart_*"},
+        {"action": "view", "resource": "dashboard.sales"},
+        {"action": "view", "resource": "dashboard.operations"}
+      ]
+    },
+    "executive": {
+      "description": "Executive leadership with access to all dashboards",
+      "permissions": [
+        {"action": "read", "resource": "mart_*"},
+        {"action": "view", "resource": "dashboard.*"},
+        {"action": "export", "resource": "mart_*"}
+      ]
+    },
+    "sales_manager": {
+      "description": "Sales team manager with territory-scoped access",
+      "permissions": [
+        {"action": "read", "resource": "mart_sales"},
+        {"action": "read", "resource": "mart_customer_analytics"},
+        {"action": "read", "resource": "dim_customer"},
+        {"action": "read", "resource": "dim_territory"},
+        {"action": "read", "resource": "fact_sales_order"},
+        {"action": "read", "resource": "fact_sales_order_line"},
+        {"action": "view", "resource": "dashboard.sales"},
+        {"action": "view", "resource": "dashboard.customer_analytics"},
+        {"action": "export", "resource": "mart_sales"}
+      ]
+    },
+    "hr_manager": {
+      "description": "HR manager with access to employee data",
+      "permissions": [
+        {"action": "read", "resource": "dim_employee"},
+        {"action": "read", "resource": "fact_employee_quota"},
+        {"action": "read", "resource": "mart_employee_territory_performance"},
+        {"action": "read", "resource": "stg_humanresources__*"},
+        {"action": "view", "resource": "dashboard.hr"}
+      ]
+    },
+    "operations_manager": {
+      "description": "Operations manager with inventory and production access",
+      "permissions": [
+        {"action": "read", "resource": "mart_operations"},
+        {"action": "read", "resource": "mart_product_analytics"},
+        {"action": "read", "resource": "fact_inventory"},
+        {"action": "read", "resource": "fact_work_order"},
+        {"action": "read", "resource": "fact_purchase_order"},
+        {"action": "read", "resource": "dim_product"},
+        {"action": "read", "resource": "dim_vendor"},
+        {"action": "view", "resource": "dashboard.operations"},
+        {"action": "view", "resource": "dashboard.product_inventory"}
+      ]
+    },
+    "marketing_manager": {
+      "description": "Marketing manager with customer analytics access",
+      "permissions": [
+        {"action": "read", "resource": "mart_customer_analytics"},
+        {"action": "read", "resource": "dim_customer"},
+        {"action": "read", "resource": "dim_territory"},
+        {"action": "view", "resource": "dashboard.customer_analytics"}
+      ]
+    },
+    "api_user": {
+      "description": "API consumer with read-only API access",
+      "permissions": [
+        {"action": "api.read", "resource": "mart_*"}
+      ]
+    },
+    "service_account": {
+      "description": "Service account for automated processes",
+      "permissions": [
+        {"action": "api.read", "resource": "*"},
+        {"action": "api.write", "resource": "staging.*"}
+      ]
+    }
+  }
+}

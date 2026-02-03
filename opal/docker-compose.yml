@@ -1,0 +1,137 @@
+# OPA Access Control Stack - Production Ready
+# 
+# Two deployment modes:
+# 1. STANDALONE (default): OPA with local policies - works immediately
+# 2. OPAL: Full OPAL stack for Git-based policy management (requires Git repo)
+
+services:
+  # =============================================================================
+  # STANDALONE OPA (Default - Production Ready)
+  # Policy engine with policies loaded from local files
+  # Use this for immediate production deployment
+  # =============================================================================
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: data_warehouse_opa
+    restart: unless-stopped
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=${OPA_LOG_LEVEL:-info}"
+      - "--log-format=text"
+      - "--set=decision_logs.console=true"
+      - "/policies"
+      - "/data"
+    ports:
+      - "${OPA_PORT:-8181}:8181"
+    volumes:
+      - ./policies:/policies:ro
+      - ./data:/data:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - opal_network
+
+  # =============================================================================
+  # OPAL STACK (Optional - for Git-based policy management)
+  # Enable with: docker compose --profile opal up -d
+  # Requires: OPAL_POLICY_REPO_URL to be configured
+  # =============================================================================
+  
+  # Broadcast channel for OPAL pub/sub
+  broadcast_channel:
+    image: postgres:16-alpine
+    container_name: data_warehouse_opal_broadcast
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: opal_broadcast
+    volumes:
+      - opal_broadcast_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - opal_network
+    profiles:
+      - opal
+
+  # OPAL Server - policy distribution from Git
+  opal_server:
+    image: permitio/opal-server:latest
+    container_name: data_warehouse_opal_server
+    restart: unless-stopped
+    environment:
+      - OPAL_BROADCAST_URI=postgres://postgres:postgres@broadcast_channel:5432/opal_broadcast
+      - UVICORN_NUM_WORKERS=4
+      # Git repository settings - can use same repo with subdirectory
+      - OPAL_POLICY_REPO_URL=${OPAL_POLICY_REPO_URL}
+      - OPAL_POLICY_REPO_MAIN_BRANCH=${OPAL_POLICY_REPO_BRANCH:-main}
+      - OPAL_POLICY_REPO_SSH_KEY=${OPAL_POLICY_REPO_SSH_KEY:-}
+      - OPAL_POLICY_SOURCE_TYPE=git
+      # Subdirectory within repo containing policies (e.g., opal/policies)
+      - OPAL_REPO_POLICY_PATHS=${OPAL_REPO_POLICY_PATHS:-opal/policies}
+      - OPAL_POLICY_REPO_POLLING_INTERVAL=30
+      - OPAL_LOG_LEVEL=${OPAL_LOG_LEVEL:-INFO}
+      - OPAL_LOG_FORMAT=text
+      - OPAL_STATISTICS_ENABLED=true
+    ports:
+      - "${OPAL_SERVER_PORT:-7002}:7002"
+    depends_on:
+      broadcast_channel:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7002/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - opal_network
+    profiles:
+      - opal
+
+  # OPAL Client with embedded OPA
+  opal_client:
+    image: permitio/opal-client:latest
+    container_name: data_warehouse_opal_client
+    restart: unless-stopped
+    environment:
+      - OPAL_SERVER_URL=http://opal_server:7002
+      - OPAL_INLINE_OPA_ENABLED=true
+      - OPAL_INLINE_OPA_LOG_FORMAT=text
+      - OPAL_DATA_TOPICS=policy_data
+      - OPAL_LOG_LEVEL=${OPAL_LOG_LEVEL:-INFO}
+    ports:
+      - "${OPAL_CLIENT_PORT:-7001}:7000"
+      - "${OPAL_OPA_PORT:-8183}:8181"
+    depends_on:
+      opal_server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7000/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - opal_network
+    profiles:
+      - opal
+
+networks:
+  opal_network:
+    name: data_warehouse_opal_opal_network
+
+volumes:
+  opal_broadcast_data:
+    driver: local

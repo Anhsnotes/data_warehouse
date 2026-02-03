@@ -1,0 +1,72 @@
+{
+  "users": {
+    "admin@company.com": {
+      "name": "System Administrator",
+      "roles": ["admin"],
+      "active": true
+    },
+    "data.engineer@company.com": {
+      "name": "Data Engineer",
+      "roles": ["data_engineer"],
+      "active": true
+    },
+    "senior.analyst@company.com": {
+      "name": "Senior Data Analyst",
+      "roles": ["analyst"],
+      "active": true
+    },
+    "junior.analyst@company.com": {
+      "name": "Junior Data Analyst",
+      "roles": ["viewer"],
+      "active": true
+    },
+    "ceo@company.com": {
+      "name": "Chief Executive Officer",
+      "roles": ["executive"],
+      "active": true
+    },
+    "cfo@company.com": {
+      "name": "Chief Financial Officer",
+      "roles": ["executive", "analyst"],
+      "active": true
+    },
+    "sales.manager.west@company.com": {
+      "name": "Sales Manager - West Region",
+      "roles": ["sales_manager"],
+      "territories": ["1", "2", "3"],
+      "active": true
+    },
+    "sales.manager.east@company.com": {
+      "name": "Sales Manager - East Region",
+      "roles": ["sales_manager"],
+      "territories": ["4", "5", "6"],
+      "active": true
+    },
+    "hr.director@company.com": {
+      "name": "HR Director",
+      "roles": ["hr_manager"],
+      "departments": ["1", "2", "3", "4", "5"],
+      "active": true
+    },
+    "ops.manager@company.com": {
+      "name": "Operations Manager",
+      "roles": ["operations_manager"],
+      "active": true
+    },
+    "marketing.director@company.com": {
+      "name": "Marketing Director",
+      "roles": ["marketing_manager"],
+      "active": true
+    },
+    "api.service@company.com": {
+      "name": "API Service Account",
+      "roles": ["api_user"],
+      "active": true
+    },
+    "etl.service@company.com": {
+      "name": "ETL Service Account",
+      "roles": ["service_account"],
+      "active": true
+    }
+  }
+}
