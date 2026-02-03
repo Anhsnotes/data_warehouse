@@ -2,9 +2,10 @@
 
 Production-ready access control using **OPA** (Open Policy Agent) with optional **OPAL** (Open Policy Administration Layer) for Git-based policy management.
 
-## Two Deployment Modes
+## Architecture
 
 ### Mode 1: Standalone OPA (Default)
+
 Simple deployment with policies loaded from local files. **No external dependencies.**
 
 ```
@@ -25,6 +26,7 @@ Simple deployment with policies loaded from local files. **No external dependenc
 ```
 
 ### Mode 2: OPAL + OPA (Git-based)
+
 Full stack with real-time policy sync from Git. **Use when you need:**
 - Automatic policy updates when Git changes
 - Multi-instance deployments
@@ -50,7 +52,7 @@ Full stack with real-time policy sync from Git. **Use when you need:**
 
 ## Quick Start
 
-### Option A: Standalone OPA (Recommended to start)
+### Option A: Standalone OPA
 
 ```bash
 cd opal
@@ -62,67 +64,101 @@ cd opal
 
 ### Option B: OPAL + OPA (Git-based policies)
 
-1. **Push this repo to GitHub** (or use existing remote)
-
-2. **Configure OPAL:**
+1. **Configure OPAL** (if not already done):
    ```bash
+   cd opal
    cp env.example .env
-   # Edit .env:
-   OPAL_POLICY_REPO_URL=https://github.com/YOUR_USERNAME/data_warehouse.git
-   OPAL_REPO_POLICY_PATHS=opal/policies
+   # Edit .env and set your repo URL:
+   # OPAL_POLICY_REPO_URL=https://github.com/YOUR_USERNAME/data_warehouse.git
    ```
 
-3. **Start OPAL stack:**
+2. **Start OPAL stack:**
    ```bash
    ./setup.sh start-opal
    ```
 
-## Components
+3. **Verify:**
+   ```bash
+   ./setup.sh status
+   ./setup.sh test
+   ```
 
-| Mode | Component | Port | Purpose |
-|------|-----------|------|---------|
-| Standalone | **OPA** | 8181 | Policy evaluation from local files |
-| OPAL | **Broadcast Channel** | internal | PostgreSQL pub/sub |
-| OPAL | **OPAL Server** | 7002 | Git sync, policy distribution |
-| OPAL | **OPAL Client** | 7001 | Receives updates, manages OPA |
-| OPAL | **OPA (embedded)** | 8183 | Policy evaluation |
+## Service URLs
 
-### 2. Verify Services
+| Mode | Service | URL | Description |
+|------|---------|-----|-------------|
+| Standalone | OPA | http://localhost:8181 | Policy evaluation |
+| OPAL | OPAL Server | http://localhost:7002 | Policy administration, Git sync |
+| OPAL | OPAL Client | http://localhost:7001 | Client health and status |
+| OPAL | OPA (embedded) | http://localhost:8183 | Policy evaluation via OPAL |
+
+## Commands Reference
 
 ```bash
-./setup.sh status
+# Standalone OPA
+./setup.sh start          # Start standalone OPA with local policies
+./setup.sh stop           # Stop all services
+./setup.sh restart        # Restart services
+
+# Full OPAL Stack
+./setup.sh start-opal     # Start OPAL + OPA (requires Git repo config)
+
+# Management
+./setup.sh status         # Check service health
+./setup.sh test           # Run policy tests
+./setup.sh logs           # View logs
+./setup.sh reload         # Reload policies (standalone mode)
 ```
 
-### 3. Test Policies
+## Sample Queries
+
+### Check if user can access a resource
 
 ```bash
-./setup.sh test
-```
-
-### 4. Query Authorization
-
-```bash
-# Check if user can read mart_sales
 curl -X POST http://localhost:8181/v1/data/datawarehouse/authz/allow \
   -H "Content-Type: application/json" \
   -d '{
     "input": {
-      "user": "analyst@company.com",
+      "user": "admin@company.com",
       "action": "read",
       "resource": "mart_sales"
     }
   }'
-
 # Response: {"result": true}
 ```
 
-## Service URLs
+### Check table access
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| OPAL Server | http://localhost:7002 | Policy administration API |
-| OPAL Client | http://localhost:7000 | Client health and status |
-| OPA | http://localhost:8181 | **Authorization queries go here** |
+```bash
+curl -X POST http://localhost:8181/v1/data/datawarehouse/data_access/can_access_table \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "user": "senior.analyst@company.com",
+      "table": "mart_sales"
+    }
+  }'
+```
+
+### Get allowed columns for a user
+
+```bash
+curl -X POST http://localhost:8181/v1/data/datawarehouse/data_access/allowed_columns \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "user": "junior.analyst@company.com",
+      "table": "dim_customers"
+    }
+  }'
+```
+
+### Debug: View all loaded data
+
+```bash
+curl http://localhost:8181/v1/data
+curl http://localhost:8181/v1/policies
+```
 
 ## Directory Structure
 
@@ -131,12 +167,14 @@ opal/
 ├── policies/                    # Rego policy files
 │   ├── rbac.rego               # Role-based access control
 │   └── data_access.rego        # Table/column/row-level access
-├── data/                        # Authorization data
-│   ├── roles.json              # Role definitions
+├── data/                        # Authorization data (JSON)
+│   ├── roles.json              # Role definitions (11 roles)
 │   ├── users.json              # User-role mappings
 │   └── table_permissions.json  # Table access per role
-├── docker-compose.yml          # Production stack definition
+├── docker-compose.yml          # Service definitions
 ├── setup.sh                    # Management script
+├── env.example                 # Configuration template
+├── client.py                   # Python client library
 └── README.md                   # This file
 ```
 
@@ -146,14 +184,27 @@ opal/
 
 | Role | Description | Access Level |
 |------|-------------|--------------|
-| `admin` | System administrator | Full access |
+| `admin` | System administrator | Full access to everything |
 | `data_engineer` | Data engineering team | Full data pipeline access |
-| `analyst` | Data analyst | Read marts, dims, facts |
+| `senior_analyst` | Senior data analyst | Read all marts, dims, facts |
+| `analyst` | Data analyst | Read marts and dims |
 | `viewer` | Read-only user | Limited mart access |
-| `executive` | Executive leadership | All dashboards |
+| `executive` | Executive leadership | All dashboards and reports |
 | `sales_manager` | Sales team manager | Sales data (territory-scoped) |
 | `hr_manager` | HR manager | Employee data (dept-scoped) |
+| `finance_manager` | Finance manager | Financial data |
 | `operations_manager` | Operations | Inventory and production |
+| `marketing_analyst` | Marketing team | Customer and sales analytics |
+
+### Sample Users
+
+| User | Role |
+|------|------|
+| `admin@company.com` | admin |
+| `senior.analyst@company.com` | senior_analyst |
+| `junior.analyst@company.com` | viewer |
+| `sales.manager.west@company.com` | sales_manager |
+| `hr.director@company.com` | hr_manager |
 
 ### Permission Actions
 
@@ -165,47 +216,17 @@ opal/
 - `view` - View dashboards
 - `query` - Execute queries
 
-## Production Features
-
-### Real-Time Policy Updates
-
-OPAL Server can track a Git repository and push policy changes to all OPA instances automatically:
-
-```yaml
-# In docker-compose.yml, configure:
-- OPAL_POLICY_REPO_URL=https://github.com/your-org/policies.git
-- OPAL_POLICY_REPO_MAIN_BRANCH=main
-```
-
-### Real-Time Data Updates
-
-Trigger data updates programmatically:
-
-```bash
-./setup.sh update
-
-# Or via API:
-curl -X POST http://localhost:7002/data/config \
-  -H "Content-Type: application/json" \
-  -d '{"entries": [{"url": "http://your-data-source/users", "topics": ["policy_data"]}]}'
-```
-
-### High Availability
-
-For production HA:
-1. Run multiple OPAL Servers behind a load balancer
-2. Use external PostgreSQL for broadcast channel
-3. Run multiple OPAL Clients for redundancy
-
 ## Integration with Streamlit
 
 ```python
 # In your Streamlit app
 import httpx
 
+OPA_URL = "http://localhost:8181"  # or host.docker.internal:8181 from container
+
 def check_authorization(user: str, action: str, resource: str) -> bool:
     response = httpx.post(
-        "http://localhost:8181/v1/data/datawarehouse/authz/allow",
+        f"{OPA_URL}/v1/data/datawarehouse/authz/allow",
         json={"input": {"user": user, "action": action, "resource": resource}}
     )
     return response.json().get("result", False)
@@ -217,32 +238,51 @@ else:
     st.error("Access denied")
 ```
 
-## Commands Reference
+## OPAL Git Configuration
+
+When using OPAL mode, policies are synced from a Git repository. Configure in `opal/.env`:
 
 ```bash
-# Start full production stack
-./setup.sh start
+# Use this repo (policies in opal/policies/ subdirectory)
+OPAL_POLICY_REPO_URL=https://github.com/Anhsnotes/data_warehouse.git
+OPAL_REPO_POLICY_PATHS=opal/policies
 
-# Start standalone OPA only (development)
-./setup.sh start-standalone
+# Or use a dedicated policy repo
+OPAL_POLICY_REPO_URL=https://github.com/your-org/opa-policies.git
+OPAL_REPO_POLICY_PATHS=.
 
-# Stop all services
-./setup.sh stop
+# For private repos, add SSH key (base64 encoded)
+OPAL_POLICY_REPO_SSH_KEY=<base64-encoded-key>
+```
 
-# Restart services
-./setup.sh restart
+OPAL polls for changes every 30 seconds. Push policy updates to Git and they'll be deployed automatically!
 
-# Run policy tests
-./setup.sh test
+## Production Considerations
 
-# View logs
-./setup.sh logs
+### High Availability
 
-# Check status
-./setup.sh status
+For production HA:
+1. Run multiple OPAL Clients behind a load balancer
+2. Use external PostgreSQL for broadcast channel
+3. Configure health checks and auto-restart
 
-# Trigger data update
-./setup.sh update
+### Security
+
+- Use HTTPS for all endpoints
+- Configure authentication tokens for OPAL
+- Restrict network access to OPA ports
+- Audit all policy decisions
+
+### Monitoring
+
+```bash
+# Health endpoints
+curl http://localhost:8181/health          # OPA health
+curl http://localhost:7002/healthcheck     # OPAL Server health
+curl http://localhost:7001/healthcheck     # OPAL Client health
+
+# Decision logs (enabled in docker-compose)
+docker logs data_warehouse_opa
 ```
 
 ## Troubleshooting
@@ -253,7 +293,8 @@ else:
 # Check logs
 ./setup.sh logs
 
-# Check individual container
+# Check individual containers
+docker logs data_warehouse_opa
 docker logs data_warehouse_opal_server
 docker logs data_warehouse_opal_client
 ```
@@ -261,8 +302,8 @@ docker logs data_warehouse_opal_client
 ### Policy Not Working
 
 ```bash
-# Test directly against OPA
-curl http://localhost:8181/v1/data
+# Test policy directly
+./setup.sh test
 
 # Check loaded policies
 curl http://localhost:8181/v1/policies
@@ -272,31 +313,22 @@ curl http://localhost:8181/v1/data/roles
 curl http://localhost:8181/v1/data/users
 ```
 
-### OPAL Server Not Responding
+### OPAL Not Syncing from Git
 
 ```bash
-# Check broadcast channel
-docker logs data_warehouse_opal_broadcast
+# Check OPAL server logs for Git errors
+docker logs data_warehouse_opal_server | grep -i "git\|error\|repo"
 
-# Restart in order
-./setup.sh stop
-./setup.sh start
+# Verify repo URL is accessible
+curl -I https://github.com/YOUR_USERNAME/data_warehouse.git
+
+# Check if .env is configured
+cat opal/.env | grep OPAL_POLICY_REPO_URL
 ```
-
-## Production Checklist
-
-- [ ] Configure Git repository for policies
-- [ ] Set up external PostgreSQL for broadcast channel
-- [ ] Configure SSL/TLS for all endpoints
-- [ ] Set up monitoring and alerting
-- [ ] Configure log aggregation
-- [ ] Set up backup for policy data
-- [ ] Test failover scenarios
-- [ ] Document emergency procedures
 
 ## References
 
-- [OPAL Documentation](https://docs.opal.ac/)
 - [OPA Documentation](https://www.openpolicyagent.org/docs/)
 - [Rego Language Reference](https://www.openpolicyagent.org/docs/latest/policy-language/)
+- [OPAL Documentation](https://docs.opal.ac/)
 - [OPAL GitHub](https://github.com/permitio/opal)

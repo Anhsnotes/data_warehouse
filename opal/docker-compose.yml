@@ -77,7 +77,6 @@ services:
       - OPAL_POLICY_REPO_URL=${OPAL_POLICY_REPO_URL}
       - OPAL_POLICY_REPO_MAIN_BRANCH=${OPAL_POLICY_REPO_BRANCH:-main}
       - OPAL_POLICY_REPO_SSH_KEY=${OPAL_POLICY_REPO_SSH_KEY:-}
-      - OPAL_POLICY_SOURCE_TYPE=git
       # Subdirectory within repo containing policies (e.g., opal/policies)
       - OPAL_REPO_POLICY_PATHS=${OPAL_REPO_POLICY_PATHS:-opal/policies}
       - OPAL_POLICY_REPO_POLLING_INTERVAL=30
@@ -90,11 +89,11 @@ services:
       broadcast_channel:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7002/healthcheck"]
-      interval: 30s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7002/healthcheck')"]
+      interval: 10s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 30s
     networks:
       - opal_network
     profiles:
@@ -108,7 +107,6 @@ services:
     environment:
       - OPAL_SERVER_URL=http://opal_server:7002
       - OPAL_INLINE_OPA_ENABLED=true
-      - OPAL_INLINE_OPA_LOG_FORMAT=text
       - OPAL_DATA_TOPICS=policy_data
       - OPAL_LOG_LEVEL=${OPAL_LOG_LEVEL:-INFO}
     ports:
@@ -118,11 +116,11 @@ services:
       opal_server:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7000/healthcheck"]
-      interval: 30s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7000/healthcheck')"]
+      interval: 10s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 30s
     networks:
       - opal_network
     profiles:

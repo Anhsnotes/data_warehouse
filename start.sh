@@ -314,11 +314,29 @@ echo "  │ 🔄 Airbyte           │ http://localhost:8000  │ $AIRBYTE_RUNNI
 
 # Check OPAL/OPA status
 if [ "$OPAL_ENABLED" = "true" ] || [ "$OPAL_ENABLED" = "1" ]; then
-    OPA_STATUS="✅"
-    if ! curl -s "http://localhost:8181/health" > /dev/null 2>&1; then
-        OPA_STATUS="⚠️ "
+    # Check if full OPAL is running (with Git sync)
+    OPAL_SERVER_STATUS="⚠️ "
+    OPAL_CLIENT_STATUS="⚠️ "
+    OPA_STATUS="⚠️ "
+    
+    if curl -s "http://localhost:7002/healthcheck" > /dev/null 2>&1; then
+        OPAL_SERVER_STATUS="✅"
     fi
-    echo "  │ 🔐 OPA Access Ctrl   │ http://localhost:8181  │ $OPA_STATUS     │"
+    if curl -s "http://localhost:7001/healthcheck" > /dev/null 2>&1; then
+        OPAL_CLIENT_STATUS="✅"
+    fi
+    if curl -s "http://localhost:8181/health" > /dev/null 2>&1; then
+        OPA_STATUS="✅"
+    fi
+    
+    # Show OPAL services if server is running
+    if [ "$OPAL_SERVER_STATUS" = "✅" ]; then
+        echo "  │ 🔐 OPAL Server       │ http://localhost:7002  │ $OPAL_SERVER_STATUS     │"
+        echo "  │ 🔐 OPAL Client       │ http://localhost:7001  │ $OPAL_CLIENT_STATUS     │"
+        echo "  │ 🔐 OPA (via OPAL)    │ http://localhost:8183  │ $OPA_STATUS     │"
+    else
+        echo "  │ 🔐 OPA Access Ctrl   │ http://localhost:8181  │ $OPA_STATUS     │"
+    fi
 else
     echo "  │ 🔐 OPA Access Ctrl   │ http://localhost:8181  │ ⏸️      │"
 fi

@@ -8,7 +8,7 @@ A modern data stack that can be quickly deployed and is ready to scale. This rep
 - **Streamlit**: Interactive dashboards with **AI Analytics Assistant**
 - **Airbyte**: Extract and Load (via `abctl` - see [Airbyte Setup](#airbyte-setup))
 - **AI Assistant**: Natural language queries powered by OpenAI GPT-4 (see [AI Setup](#ai-assistant-setup))
-- **OPAL Access Control**: Fine-grained authorization with OPA (see [OPAL Setup](#opal-access-control-setup))
+- **OPA Access Control**: Fine-grained authorization with OPA/OPAL (see [OPAL Setup](#opal-access-control-setup))
 
 ## Quick Start
 
@@ -62,19 +62,16 @@ This will stop all services including Airbyte (if running).
 
 Once started, access the services at:
 
-- **PostgreSQL**: `localhost:5432`
-  - Default credentials: `postgres/postgres`
-  - Default database: `data_warehouse`
-  
-- **Streamlit Dashboard**: `http://localhost:8501`
-
-- **dbt Documentation**: `http://localhost:8080`
-
-- **SQL Server**: `localhost:1433`
-  - Default credentials: `sa/YourStrong@Passw0rd` (or value from `SQLSERVER_SA_PASSWORD` env var)
-  - Default database: `AdventureWorks2022` (after installation)
-  
-- **Airbyte Web UI**: `http://localhost:8000` (see [Airbyte Setup](#airbyte-setup) below)
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **PostgreSQL** | `localhost:5432` | `postgres/postgres` |
+| **Streamlit Dashboard** | http://localhost:8501 | - |
+| **dbt Documentation** | http://localhost:8080 | - |
+| **SQL Server** | `localhost:1433` | `sa/YourStrong@Passw0rd` |
+| **Airbyte Web UI** | http://localhost:8000 | See [Airbyte Setup](#airbyte-setup) |
+| **OPA (Access Control)** | http://localhost:8181 | - |
+| **OPAL Server** | http://localhost:7002 | (when Git configured) |
+| **OPAL Client** | http://localhost:7001 | (when Git configured) |
 
 ### Verify Services are Running
 
@@ -332,56 +329,67 @@ For more details, see [streamlit/ai/README.md](streamlit/ai/README.md).
 
 ## OPAL Access Control Setup
 
-The data warehouse includes **OPAL (Open Policy Administration Layer)** for fine-grained access control using OPA (Open Policy Agent).
+The data warehouse includes **OPA (Open Policy Agent)** for fine-grained access control, with optional **OPAL** for Git-based policy management.
 
-### 1. Start OPAL Services
+### Quick Start
 
-**Option A: Using start.sh (Recommended)**
-
-Enable OPAL and start all services:
+OPA is **enabled by default** when you run `./start.sh`. No additional configuration needed!
 
 ```bash
-export OPAL_ENABLED=true
-./start.sh
+./start.sh    # Starts all services including OPA
 ```
 
-Or add to your `.env` file:
-```bash
-OPAL_ENABLED=true
-```
+### Service URLs
 
-**Option B: Start OPAL Independently**
+| Service | URL | Description |
+|---------|-----|-------------|
+| OPA (standalone) | http://localhost:8181 | Policy evaluation endpoint |
+| OPAL Server | http://localhost:7002 | Policy admin (when Git configured) |
+| OPAL Client | http://localhost:7001 | OPAL client status |
+| OPA (via OPAL) | http://localhost:8183 | Policy evaluation via OPAL |
+
+### Two Deployment Modes
+
+| Mode | Command | Use Case |
+|------|---------|----------|
+| **Standalone OPA** | `./setup.sh start` | Local policies, simple setup |
+| **OPAL + OPA** | `./setup.sh start-opal` | Git-synced policies, production |
+
+### Test Authorization
 
 ```bash
 cd opal
-./setup.sh start
-```
-
-This will start:
-- **OPAL Server**: Policy administration (http://localhost:7002)
-- **OPAL Client**: Policy evaluation with embedded OPA (http://localhost:8181)
-- **Standalone OPA**: For testing (http://localhost:8182)
-
-### 2. Verify OPAL is Running
-
-```bash
-./setup.sh status
-```
-
-### 3. Test Authorization
-
-```bash
 ./setup.sh test
 ```
 
-### 4. Enable OPAL in Streamlit
-
-Add to your `.env` file:
+### Sample Query
 
 ```bash
-OPAL_ENABLED=true
-OPA_URL=http://opal-client:8181
+curl -X POST http://localhost:8181/v1/data/datawarehouse/authz/allow \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "user": "admin@company.com",
+      "action": "read",
+      "resource": "mart_sales"
+    }
+  }'
+# Response: {"result": true}
 ```
+
+### Enable Git-based Policy Sync (Optional)
+
+To enable automatic policy updates from Git:
+
+```bash
+cd opal
+cp env.example .env
+# Edit .env and set:
+# OPAL_POLICY_REPO_URL=https://github.com/YOUR_USERNAME/data_warehouse.git
+# OPAL_REPO_POLICY_PATHS=opal/policies
+```
+
+Then restart with `./start.sh` - OPAL will automatically sync policies from Git.
 
 ### Available Roles
 
@@ -389,12 +397,19 @@ OPA_URL=http://opal-client:8181
 |------|-------------|
 | `admin` | Full system access |
 | `data_engineer` | Full data pipeline access |
-| `analyst` | Read access to marts and analytics |
+| `senior_analyst` | Read all marts, dims, facts |
+| `analyst` | Read marts and dims |
 | `viewer` | Limited read-only access |
 | `executive` | All dashboards and reports |
 | `sales_manager` | Sales data (territory-scoped) |
 | `hr_manager` | Employee data (department-scoped) |
 | `operations_manager` | Inventory and production data |
+
+### Disable OPA (if needed)
+
+```bash
+OPAL_ENABLED=false ./start.sh
+```
 
 For detailed documentation, see [opal/README.md](opal/README.md).
 
