@@ -1,0 +1,19 @@
+# Data Fetcher Service for OPAL
+# Syncs authorization data from the data warehouse to OPAL
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir \
+    psycopg2-binary \
+    httpx \
+    python-dotenv \
+    schedule
+
+# Copy the data fetcher script
+COPY data_fetcher.py /app/
+
+# Run the fetcher
+CMD ["python", "-u", "data_fetcher.py"]

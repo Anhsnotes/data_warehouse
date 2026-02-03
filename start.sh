@@ -2,12 +2,15 @@
 
 # Data Warehouse Stack Startup Script
 # This script starts all services in the correct order:
-# 1. PostgreSQL
-# 2. Streamlit
-# 3. dbt Documentation Server
-# 4. SQL Server
-# 5. AdventureWorks Database (SQL Server, if not exists)
-# 6. Airbyte (installs abctl and Airbyte if needed, then starts)
+#
+# Pre-flight: Create Docker networks
+# Step 1: PostgreSQL (localhost:5432)
+# Step 2: Streamlit Dashboard (http://localhost:8501)
+# Step 3: dbt Documentation Server (http://localhost:8080)
+# Step 4: SQL Server (localhost:1433)
+# Step 5: AdventureWorks Database (SQL Server sample data)
+# Step 6: Airbyte (http://localhost:8000)
+# Step 7: OPAL Access Control (http://localhost:7002, http://localhost:8181)
 
 set -e
 
@@ -18,6 +21,12 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}🚀 Starting Data Warehouse Stack...${NC}"
+echo ""
+
+# Pre-flight: Create OPAL network (needed before Streamlit starts)
+echo -e "${YELLOW}Pre-flight: Creating OPAL network...${NC}"
+docker network create data_warehouse_opal_opal_network 2>/dev/null || true
+echo -e "${GREEN}✓ OPAL network ready${NC}"
 echo ""
 
 # Step 1: Start PostgreSQL
@@ -248,26 +257,88 @@ if command -v abctl &> /dev/null; then
 fi
 echo ""
 
-# Summary
-echo -e "${GREEN}════════════════════════════════════════${NC}"
-echo -e "${GREEN}✅ All services started successfully!${NC}"
-echo -e "${GREEN}════════════════════════════════════════${NC}"
-echo ""
-echo "Service URLs:"
-echo "  📊 PostgreSQL:     localhost:5432"
-echo "  📈 Streamlit:      http://localhost:8501"
-echo "  📚 dbt Docs:       http://localhost:8080"
-echo "  🗄️  SQL Server:    localhost:1433"
-if command -v abctl &> /dev/null; then
-    AIRBYTE_STATUS=$(abctl local status 2>&1 || echo "")
-    if echo "$AIRBYTE_STATUS" | grep -qi "running\|installed"; then
-        echo "  🔄 Airbyte:        http://localhost:8000"
+# Step 7: Start OPAL Access Control (if enabled)
+OPAL_ENABLED="${OPAL_ENABLED:-false}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ "$OPAL_ENABLED" = "true" ] || [ "$OPAL_ENABLED" = "1" ]; then
+    echo -e "${YELLOW}Step 7: Starting OPAL Access Control...${NC}"
+    
+    if [ -f "$SCRIPT_DIR/opal/setup.sh" ]; then
+        cd "$SCRIPT_DIR/opal"
+        
+        # Start OPAL services
+        ./setup.sh start
+        
+        cd "$SCRIPT_DIR"
+        echo -e "${GREEN}✓ OPAL Access Control started${NC}"
+    else
+        echo -e "${YELLOW}⚠ OPAL setup script not found. Skipping OPAL startup.${NC}"
     fi
+else
+    echo -e "${YELLOW}Step 7: Skipping OPAL Access Control (OPAL_ENABLED=${OPAL_ENABLED})${NC}"
+    echo -e "${YELLOW}   To enable: export OPAL_ENABLED=true${NC}"
 fi
 echo ""
-echo "Useful commands:"
-echo "  View logs:         docker-compose logs -f [service_name]"
-echo "  Stop services:     ./stop.sh"
-echo "  Check status:      docker-compose ps"
+
+# Summary
+echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}✅ All services started successfully!${NC}"
+echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
+echo ""
+echo -e "${BLUE}Service URLs:${NC}"
+echo ""
+echo "  ┌─────────────────────────────────────────────────────────┐"
+echo "  │ Service              │ URL                    │ Status │"
+echo "  ├─────────────────────────────────────────────────────────┤"
+echo "  │ 📊 PostgreSQL        │ localhost:5432         │ ✅     │"
+echo "  │ 📈 Streamlit         │ http://localhost:8501  │ ✅     │"
+echo "  │ 📚 dbt Docs          │ http://localhost:8080  │ ✅     │"
+echo "  │ 🗄️  SQL Server        │ localhost:1433         │ ✅     │"
+
+# Check Airbyte status (check container directly for reliability)
+AIRBYTE_RUNNING="❌"
+if docker ps --format "{{.Names}}" 2>/dev/null | grep -q "airbyte-abctl-control-plane"; then
+    AIRBYTE_RUNNING="✅"
+elif command -v abctl &> /dev/null; then
+    AIRBYTE_STATUS=$(abctl local status 2>&1 || echo "")
+    if echo "$AIRBYTE_STATUS" | grep -qi "running\|deployed\|SUCCESS"; then
+        AIRBYTE_RUNNING="✅"
+    fi
+fi
+echo "  │ 🔄 Airbyte           │ http://localhost:8000  │ $AIRBYTE_RUNNING     │"
+
+# Check OPAL/OPA status
+if [ "$OPAL_ENABLED" = "true" ] || [ "$OPAL_ENABLED" = "1" ]; then
+    OPAL_STATUS="✅"
+    OPA_STATUS="✅"
+    if ! curl -s "http://localhost:7002/healthcheck" > /dev/null 2>&1; then
+        OPAL_STATUS="⚠️ "
+    fi
+    if ! curl -s "http://localhost:8181/health" > /dev/null 2>&1; then
+        OPA_STATUS="⚠️ "
+    fi
+    echo "  │ 🔐 OPAL Server       │ http://localhost:7002  │ $OPAL_STATUS     │"
+    echo "  │ 🔐 OPA (via OPAL)    │ http://localhost:8181  │ $OPA_STATUS     │"
+else
+    echo "  │ 🔐 OPAL Server       │ http://localhost:7002  │ ⏸️      │"
+    echo "  │ 🔐 OPA (via OPAL)    │ http://localhost:8181  │ ⏸️      │"
+fi
+echo "  └─────────────────────────────────────────────────────────┘"
+echo ""
+echo -e "${BLUE}Default Credentials:${NC}"
+echo "  PostgreSQL:  postgres / postgres"
+echo "  SQL Server:  sa / YourStrong@Passw0rd"
+echo ""
+echo -e "${BLUE}Useful Commands:${NC}"
+echo "  View logs:          docker-compose logs -f [service_name]"
+echo "  Stop services:      ./stop.sh"
+echo "  Check status:       docker-compose ps"
+if [ "$OPAL_ENABLED" = "true" ] || [ "$OPAL_ENABLED" = "1" ]; then
+    echo "  OPAL status:        cd opal && ./setup.sh status"
+    echo "  Test policies:      cd opal && ./setup.sh test"
+else
+    echo "  Enable OPAL:        export OPAL_ENABLED=true && ./start.sh"
+fi
 echo ""
 

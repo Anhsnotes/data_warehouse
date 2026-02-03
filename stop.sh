@@ -2,8 +2,10 @@
 
 # Data Warehouse Stack Shutdown Script
 # This script stops all services in the correct order:
-# 1. Airbyte (if running)
-# 2. Docker Compose services (dbt-docs, streamlit, postgres)
+#
+# Step 1: Airbyte (if running)
+# Step 2: OPAL Access Control (if running)
+# Step 3: Docker Compose services (Streamlit, dbt-docs, SQL Server, PostgreSQL)
 
 set -e
 
@@ -71,8 +73,42 @@ else
 fi
 echo ""
 
-# Step 2: Stop Docker Compose services
-echo -e "${YELLOW}Step 2: Stopping Docker Compose services...${NC}"
+# Step 2: Stop OPAL Access Control (if running)
+echo -e "${YELLOW}Step 2: Stopping OPAL Access Control...${NC}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check if OPAL containers are running
+OPAL_RUNNING=$(docker ps --format "{{.Names}}" | grep -c "data_warehouse_opal" 2>/dev/null || echo 0)
+
+if [ "${OPAL_RUNNING:-0}" -gt 0 ]; then
+    echo -e "${YELLOW}   Found running OPAL services. Stopping...${NC}"
+    
+    if [ -f "$SCRIPT_DIR/opal/setup.sh" ]; then
+        cd "$SCRIPT_DIR/opal"
+        ./setup.sh stop
+        cd "$SCRIPT_DIR"
+        echo -e "${GREEN}✓ OPAL + OPA services stopped${NC}"
+    else
+        # Fallback: stop containers directly
+        set +e
+        docker stop data_warehouse_opal_server data_warehouse_opal_client data_warehouse_opal_broadcast data_warehouse_opa_standalone 2>/dev/null
+        set -e
+        echo -e "${GREEN}✓ OPAL containers stopped${NC}"
+    fi
+else
+    # Check for stopped OPAL containers
+    OPAL_EXISTS=$(docker ps -a --format "{{.Names}}" | grep -c "data_warehouse_opal" 2>/dev/null || echo 0)
+    if [ "${OPAL_EXISTS:-0}" -gt 0 ]; then
+        echo -e "${GREEN}✓ OPAL services are already stopped${NC}"
+    else
+        echo -e "${GREEN}✓ OPAL is not running (no containers found)${NC}"
+    fi
+fi
+echo ""
+
+# Step 3: Stop Docker Compose services
+echo -e "${YELLOW}Step 3: Stopping Docker Compose services...${NC}"
 if docker-compose ps | grep -q "Up"; then
     echo -e "${YELLOW}   Stopping containers...${NC}"
     docker-compose down
@@ -83,16 +119,27 @@ fi
 echo ""
 
 # Summary
-echo -e "${GREEN}════════════════════════════════════════${NC}"
+echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}✅ All services stopped successfully!${NC}"
-echo -e "${GREEN}════════════════════════════════════════${NC}"
+echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
 echo ""
-echo "To start services again:"
-echo "  ./start.sh"
+echo -e "${BLUE}Services Stopped:${NC}"
+echo "  • PostgreSQL        (localhost:5432)"
+echo "  • Streamlit         (http://localhost:8501)"
+echo "  • dbt Docs          (http://localhost:8080)"
+echo "  • SQL Server        (localhost:1433)"
+echo "  • Airbyte           (http://localhost:8000)"
+echo "  • OPAL Server       (http://localhost:7002)"
+echo "  • OPA (via OPAL)    (http://localhost:8181)"
 echo ""
-echo "Useful commands:"
-echo "  View stopped containers: docker-compose ps -a"
-echo "  Remove volumes (⚠️ deletes data): docker-compose down -v"
-echo "  Check Airbyte status: abctl local status"
+echo -e "${BLUE}To start services again:${NC}"
+echo "  ./start.sh                           # Start core services"
+echo "  OPAL_ENABLED=true ./start.sh         # Start with OPAL access control"
+echo ""
+echo -e "${BLUE}Useful Commands:${NC}"
+echo "  View stopped containers:   docker-compose ps -a"
+echo "  Remove volumes (⚠️ data):   docker-compose down -v"
+echo "  Check Airbyte status:      abctl local status"
+echo "  OPAL status:               cd opal && ./setup.sh status"
 echo ""
 

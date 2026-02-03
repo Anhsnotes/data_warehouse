@@ -34,17 +34,24 @@ services:
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_PORT=5432
+      # OPAL Access Control
+      - OPA_URL=${OPA_URL:-http://opal-client:8181}
+      - OPAL_ENABLED=${OPAL_ENABLED:-false}
     volumes:
       - ./streamlit/app.py:/app/app.py:ro
       - ./streamlit/pages:/app/pages:ro
       - ./streamlit/ai:/app/ai:ro
       - ./dbt/models/schema_ai.md:/dbt/models/schema_ai.md:ro
+      - ./opal/client.py:/app/opal_client.py:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.connect(('localhost', 8501)); s.close()"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - default
+      - opal_network
     depends_on:
       - postgres
 
@@ -94,6 +101,13 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+networks:
+  default:
+    name: data_warehouse_default
+  opal_network:
+    name: data_warehouse_opal_opal_network
+    external: true
 
 volumes:
   postgres_data:

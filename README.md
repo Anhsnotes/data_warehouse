@@ -8,6 +8,7 @@ A modern data stack that can be quickly deployed and is ready to scale. This rep
 - **Streamlit**: Interactive dashboards with **AI Analytics Assistant**
 - **Airbyte**: Extract and Load (via `abctl` - see [Airbyte Setup](#airbyte-setup))
 - **AI Assistant**: Natural language queries powered by OpenAI GPT-4 (see [AI Setup](#ai-assistant-setup))
+- **OPAL Access Control**: Fine-grained authorization with OPA (see [OPAL Setup](#opal-access-control-setup))
 
 ## Quick Start
 
@@ -260,6 +261,13 @@ data_warehouse/
 ├── start.sh                    # Startup script for all services
 ├── launch.sh                   # Launch analytics stack (dbt, docs, streamlit)
 ├── stop.sh                     # Shutdown script for all services
+├── opal/                       # OPAL access control
+│   ├── policies/               # Rego policy files
+│   ├── data/                   # Authorization data (roles, users)
+│   ├── docker-compose.yml      # OPAL service definitions
+│   ├── setup.sh                # Setup and management script
+│   ├── client.py               # Python client library
+│   └── README.md               # OPAL documentation
 ├── dbt/                        # dbt project
 │   ├── models/                 # SQL models (staging, intermediate, marts)
 │   │   └── schema_ai.md        # Auto-generated AI context (by run_dbt.sh)
@@ -320,6 +328,78 @@ EOF
 
 For more details, see [streamlit/ai/README.md](streamlit/ai/README.md).
 
+---
+
+## OPAL Access Control Setup
+
+The data warehouse includes **OPAL (Open Policy Administration Layer)** for fine-grained access control using OPA (Open Policy Agent).
+
+### 1. Start OPAL Services
+
+**Option A: Using start.sh (Recommended)**
+
+Enable OPAL and start all services:
+
+```bash
+export OPAL_ENABLED=true
+./start.sh
+```
+
+Or add to your `.env` file:
+```bash
+OPAL_ENABLED=true
+```
+
+**Option B: Start OPAL Independently**
+
+```bash
+cd opal
+./setup.sh start
+```
+
+This will start:
+- **OPAL Server**: Policy administration (http://localhost:7002)
+- **OPAL Client**: Policy evaluation with embedded OPA (http://localhost:8181)
+- **Standalone OPA**: For testing (http://localhost:8182)
+
+### 2. Verify OPAL is Running
+
+```bash
+./setup.sh status
+```
+
+### 3. Test Authorization
+
+```bash
+./setup.sh test
+```
+
+### 4. Enable OPAL in Streamlit
+
+Add to your `.env` file:
+
+```bash
+OPAL_ENABLED=true
+OPA_URL=http://opal-client:8181
+```
+
+### Available Roles
+
+| Role | Description |
+|------|-------------|
+| `admin` | Full system access |
+| `data_engineer` | Full data pipeline access |
+| `analyst` | Read access to marts and analytics |
+| `viewer` | Limited read-only access |
+| `executive` | All dashboards and reports |
+| `sales_manager` | Sales data (territory-scoped) |
+| `hr_manager` | Employee data (department-scoped) |
+| `operations_manager` | Inventory and production data |
+
+For detailed documentation, see [opal/README.md](opal/README.md).
+
+---
+
 ### AI Sync with dbt Models
 
 When you add new dbt models, the AI components are **automatically synchronized**:
@@ -346,6 +426,7 @@ Each component has its own README with component-specific details:
 - **[streamlit/ai/README.md](streamlit/ai/README.md)** - AI Analytics Assistant setup
 - **[adventureworks/README.md](adventureworks/README.md)** - AdventureWorks database installation
 - **[airbyte/README.md](airbyte/README.md)** - Airbyte setup and troubleshooting
+- **[opal/README.md](opal/README.md)** - OPAL access control setup and policies
 
 ## Troubleshooting
 

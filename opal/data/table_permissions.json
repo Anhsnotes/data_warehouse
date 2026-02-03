@@ -1,0 +1,105 @@
+{
+  "table_permissions": {
+    "admin": {
+      "tables": ["*"],
+      "description": "Full access to all tables"
+    },
+    "data_engineer": {
+      "tables": [
+        "stg_*",
+        "dim_*",
+        "fact_*",
+        "mart_*",
+        "intermediate.*",
+        "metrics_*"
+      ],
+      "description": "Full access to all data warehouse tables"
+    },
+    "analyst": {
+      "tables": [
+        "mart_sales",
+        "mart_customer_analytics",
+        "mart_product_analytics",
+        "mart_operations",
+        "mart_employee_territory_performance",
+        "mart_metrics",
+        "dim_customer",
+        "dim_date",
+        "dim_employee",
+        "dim_metric",
+        "dim_product",
+        "dim_territory",
+        "dim_vendor",
+        "fact_employee_quota",
+        "fact_global_metrics",
+        "fact_inventory",
+        "fact_purchase_order",
+        "fact_sales_order",
+        "fact_sales_order_line",
+        "fact_work_order"
+      ],
+      "description": "Access to mart, dimension, and fact tables"
+    },
+    "viewer": {
+      "tables": [
+        "mart_sales",
+        "mart_operations"
+      ],
+      "description": "Limited access to core marts only"
+    },
+    "executive": {
+      "tables": [
+        "mart_sales",
+        "mart_customer_analytics",
+        "mart_product_analytics",
+        "mart_operations",
+        "mart_employee_territory_performance",
+        "mart_metrics"
+      ],
+      "description": "Access to all mart tables"
+    },
+    "sales_manager": {
+      "tables": [
+        "mart_sales",
+        "mart_customer_analytics",
+        "dim_customer",
+        "dim_territory",
+        "fact_sales_order",
+        "fact_sales_order_line"
+      ],
+      "description": "Access to sales-related tables with territory filter"
+    },
+    "hr_manager": {
+      "tables": [
+        "dim_employee",
+        "fact_employee_quota",
+        "mart_employee_territory_performance",
+        "stg_humanresources__department",
+        "stg_humanresources__employee",
+        "stg_humanresources__employeedepartmenthistory",
+        "stg_humanresources__employeepayhistory"
+      ],
+      "description": "Access to HR and employee tables"
+    },
+    "operations_manager": {
+      "tables": [
+        "mart_operations",
+        "mart_product_analytics",
+        "dim_product",
+        "dim_vendor",
+        "fact_inventory",
+        "fact_work_order",
+        "fact_purchase_order"
+      ],
+      "description": "Access to operations and inventory tables"
+    },
+    "marketing_manager": {
+      "tables": [
+        "mart_customer_analytics",
+        "dim_customer",
+        "dim_territory"
+      ],
+      "description": "Access to customer analytics tables"
+    }
+  }
+}
