@@ -180,7 +180,8 @@ page = st.sidebar.radio(
         "👥 Customer Analytics",
         "👔 HR & Employee Performance",
         "⚙️ Operations & Supply Chain",
-        "🔮 Advanced Analytics"
+        "🔮 Advanced Analytics",
+        "🛡️ OPAL Authorization Demo"
     ],
     index=0
 )
@@ -449,6 +450,9 @@ elif page == "⚙️ Operations & Supply Chain":
 elif page == "🔮 Advanced Analytics":
     from pages import advanced_analytics
     advanced_analytics.render(conn)
+elif page == "🛡️ OPAL Authorization Demo":
+    from pages import opal_demo
+    opal_demo.render(conn)
 
 # Footer
 st.markdown("---")
